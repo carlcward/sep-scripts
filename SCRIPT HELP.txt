@@ -1,0 +1,78 @@
+----------------------
+sep_processor.py
+----------------------
+Takes a the output from find_RNA_transcripts and calculates the necessary data for the SEP
+It will return: length, start type, and create a .APE map of the sep
+
+Input:
+	peptides_with_data.txt, output directory (will create it/clear previous APE maps)
+
+Output:
+	results.txt             (-b no)
+	results_blast.txt       (-b yes)
+	named APE files corresponding to peptide/annotation
+
+Syntax:
+	python   sep_processor.py    peptide_and_transcript.txt   result_directors -b yes/no
+
+'-b' flag controls whether the peptides will be Blasted and matched up with known annotated sequences. Only annotated results will be reported
+
+Example:
+	python   sep_processor.py    pep_and_trans.txt   ./RNAMaps
+
+
+----------------------
+find_RNA_transcripts.py    
+----------------------
+
+Take a list of peptides as input, along with the translated database, transcript database, and DTASelect.txt file (downloaded from ip2 website) and pairs up detected peptides with possible transcripts and coordindates.
+
+Input:
+	List of peptides
+
+Output:
+	peptides_with_data.txt
+
+Syntax:
+	python   find_RNA_transcripts.py   list_of_peptides.txt   translated_database.fasta   transcript_database.fasta   DTASelect 
+
+Example:
+	python   find_RNA_transcripts.py   peptides.txt   ../databases/translate.faa   ../databases/transcripts.faa   DTASelect.txt
+
+
+----------------------
+120717_AGS_find_RNA_transcripts.py    
+----------------------	
+
+Functions the same as find_RNA_transcripts.py, except it uses different a different coordinate database, as well as different searching for the PC Number
+
+
+----------------------
+spectra_grab.py    
+----------------------
+
+This script will grab the desired MS spectra from the ip2 website. It requires varioues external libraries to function:
+	1) webkit2png downloaded from (https://raw.github.com/paulhammond/webkit2png/master/webkit2png) and installed with execute permissions to an excutable directory (ex: /usr/local/bin)
+	2) twill python module (should install via easy_install fine)
+	3) PIL Image module (again with easy_install), will require C compiler to install, easiest way is by install Mac OS X Development Tools with command line options
+
+Input:
+	List of peptides, output directory (will create), and then copy-paste the url for the protein page from the ip2 website after executing the program
+
+Output:
+	Spectra image files in the specified output directory, name by peptide
+
+Syntax:
+	python   spectra_grab.py   peptides.txt   ./Spectra_directory/
+
+Example:
+	python   spectra_grab.py   peptides.txt   ./sprectra_out/
+
+	http://ip2-saglab.fas.harvard.edu/ip2/searchResult.html?pid=5&experimentId=2&projectName=K562_SEP+profiling&searchId=18&sampleName=K562_Gel1D&createdDate=2013-02-20+14%3a33%3a48.0&searchName=
+
+
+
+
+
+
+
