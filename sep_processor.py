@@ -1,7 +1,8 @@
 import sys, os, subprocess, argparse
 import blast, ape_tools
 
-
+# keep track of file numbers
+write_dict = {}
 # codon -> protein dict
 trans_dict = {"TTT":"F|Phe","TTC":"F|Phe","TTA":"L|Leu","TTG":"L|Leu","TCT":"S|Ser","TCC":"S|Ser", 
 "TCA":"S|Ser","TCG":"S|Ser", "TAT":"Y|Tyr","TAC":"Y|Tyr","TAA":"*|Stp","TAG":"*|Stp", 
@@ -135,13 +136,10 @@ def write_results_line(out_file,coord, peptide, annotation, location, start_type
 	out_file.write("%s\t%s\t%s\t%s\t%s\t%s\t\t%s\n" % (coord, peptide, annotation, location, start_type, sep_length, dna))
 
 def write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop):
-	num = ''
-	while os.path.isfile(out_path + file_name + str(num) + ".ape"):
-		if num == '':
-			num = 1
-		else:
-			num += 1
-	#print out_path + peptide[:4] + str(num) + ".ape","w"
+	num = write_dict.setdefault(file_name,0) + 1
+	if num == 1:
+		num = ''
+	write_dict[file_name] += 1
 	out_file = open(out_path + file_name + str(num) + ".ape","w")
 	out_file.write(ape_tools.create_ape_map(dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop))
 	out_file.close()
@@ -153,7 +151,7 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser('Online Blast Search')
 	parser.add_argument("sep_in", type=str)
 	parser.add_argument("out", type=str)
-	parser.add_argument("--blast", "-b", dest="blast", type=str)
+	parser.add_argument("--blast", "-b", dest="blast", required=True, type=str)
 	args = parser.parse_args()
 
 
@@ -162,8 +160,6 @@ if __name__ == '__main__':
 	# clear the directory of ape files
 	if os.path.isdir(out_path):
 		print "Out directory exists"
-		print "Clearing output directory of previous Maps\n"
-		subprocess.call(['rm '+out_path+'*.ape'], shell=True)
 	else:
 		print "Out directory does not exist, Created!"
 		subprocess.call(['mkdir', out_path])
@@ -186,16 +182,17 @@ if __name__ == '__main__':
 	'''
 	# tblastn the peptides and collect the data
 	if args.blast == 'yes':
-		out_file_text = open(out_path + "results_blast.txt", 'w')
+		out_file_text = open(out_path + "results_blast.csv", 'w')
 		req = blast.send_blast_request(queries)
 		xml_data = blast.get_blast_results(req)
 		blast_dict = blast.parse_blast_results(xml_data)
+		# only iterate through data with blast
 		peptide_data = filter( lambda pd: pd[2] in blast_dict.keys(), peptide_data )
 	elif args.blast == 'no':
-		out_file_text = open(out_path + "results.txt", 'w')
+		out_file_text = open(out_path + "results.csv", 'w')
 		blast_dict = {}
 	else:
-		out_file_text = open(out_path + "results_blast.txt", 'w')
+		out_file_text = open(out_path + "results_blast.csv", 'w')
 		blast_dict = blast.parse_blast_results(open(args.blast,'r').read())
 		peptide_data = filter( lambda pd: pd[2] in blast_dict.keys(), peptide_data )
 	# write a little header
@@ -213,6 +210,7 @@ if __name__ == '__main__':
 		
 		location = ''
 		# two options - the peptide had a blast hit or it didnt
+		# we have slightly different processing/iterator patterns, so we have to control for this unfortunately 
 		if peptide in blast_dict.keys() :
 			# check if we have already processed the blast data for this peptide
 			if peptide not in blast_done:
