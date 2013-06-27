@@ -233,9 +233,9 @@ if __name__ == '__main__':
 					
 					if out_peptide:
 						# get the location in the coding sequence, or show no coding sequence (also set cds_start, cds_stop)
-						location,cds_start,cds_stop = ape_tools.calculate_location_in_protein(start, stop, cds_start, cds_stop, ape_tools.index_frame_to_loc(start,frame))
+						location,cds_start,cds_stop = ape_tools.calculate_location_in_protein(start, stop, cds_start, cds_stop)
 						# write the results file, with the RNAseq dna
-						write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna)
+						write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
 						# write the ape file with the returned blast DNA
 						write_ape_file(out_path, file_name, blast_dna_or_message, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop)
 					else:

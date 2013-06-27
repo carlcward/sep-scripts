@@ -20,7 +20,7 @@ out_file = open(args.out, "w")
 delchars = ''.join(c for c in map(chr, range(256)) if not c.isalpha())
 def send_blast_request(queries):
 	word_size = 2
-	expect_value = 20000000
+	expect_value = 5000000
 	matrix_name = "PAM30"
 	database = "refseq_rna"
 	#query_file = pep_file.read()
@@ -35,7 +35,7 @@ def send_blast_request(queries):
 		'WORD_SIZE' : word_size,
 		'EXPECT' : expect_value,
 		'MATRIX' : matrix_name,
-		'HITLIST_SIZE' : 10,
+		'HITLIST_SIZE' : 100,
 		'PROGRAM' : 'tblastn',
 		'NCBI_GI' : 'on',
 		#'PAGE' : 'Proteins',
