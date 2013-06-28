@@ -5,7 +5,7 @@ import argparse
 
 
 
-if __name__ = '__main__':
+if __name__ == '__main__':
 	parser = argparse.ArgumentParser("Takes a line deliminted list and converts it to FASTA")
 	parser.add_argument("in_file",type=str)
 	parser.add_argument("out_file",type=str)

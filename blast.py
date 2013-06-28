@@ -67,9 +67,9 @@ def get_blast_results(put_request):
 		#print data
 		if re.search("xml version=\"1.0\"", data):
 				done = True
-				
+
 		else:
-			
+
 			sleep(rtoe/3)
 			get_request = urlopen(("http://www.ncbi.nlm.nih.gov/blast/Blast.cgi?" +
 	        "CMD=Get&RID=%s&FORMAT_OBJECT=Alignment"+
@@ -78,8 +78,8 @@ def get_blast_results(put_request):
 	print "Blast results received"
 	return data
 def parse_blast_results(xml):
-	#xml_file = open("blast_xml.txt", 'w')
-	#xml_file.write(xml)
+	xml_file = open("blast_xml.txt", 'w')
+	xml_file.write(xml)
 	xml = StringIO.StringIO(xml)
 
 	tree = etree.parse(xml)
@@ -101,7 +101,7 @@ def parse_blast_results(xml):
 			hit_name = hit.find('Hit_def').text.split('|')[0]
 			# filter out ONLY the perfect matches (indentities = peptide length)
 			hit_hsps = filter(lambda h: h.find('Hsp_identity').text == str(length), hit.find('Hit_hsps'))
-			
+
 			if len(hit_hsps) > 0:
 				#print "HIT: %s\t%s" % (peptide,hit_name)
 
@@ -113,7 +113,7 @@ def parse_blast_results(xml):
 				record  = StringIO.StringIO(record)
 				cds_range = ''
 				seq = ''
-				
+
 				# get the coding sequence location and mRNA sequence, return it with the names
 				for line in record:
 					cds_search = re.search("\WCDS\W(.*)",line)
@@ -134,15 +134,8 @@ def parse_blast_results(xml):
 	return query_dict
 
 
-	
+
 if __name__ == '__main__':
 	p = send_blast_request(["AGSGKNDHAEKV","AMRYVASYLLAALGGNSSPSAKD","EVISELNGKN"])
 	xml = get_blast_results(p)
 	parse_blast_results(xml)
-
-
-
-
-
-
-

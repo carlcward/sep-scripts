@@ -9,16 +9,28 @@ def loc_to_index_frame(loc):
     return index,frame
 
 # calculate the location in the protein based on the ape locations for the protein
-def calculate_location_in_protein(start, stop, cds_start, cds_stop):
+def calculate_location_in_protein(start, stop, frame, cds_start, cds_stop):
     location = ''
     if cds_start == 'non-coding':
         location = 'non-coding'
         cds_start = 0
         cds_stop = 0
-    elif start < loc_to_index_frame(int(cds_start))[0]:
+        return location, cds_start, cds_stop
+   
+    p_start_index,p_start_frame = loc_to_index_frame(int(cds_start))
+    p_stop_index,p_stop_frame = loc_to_index_frame(int(cds_stop))
+
+    if frame == p_start_frame:
+        if start < p_start_index:
+            location = '5\' Extension'
+        elif stop > p_stop_index:
+            location = '3\' Extension'
+        else:
+            location = 'IN FRAME IN CDS'
+    elif start < p_start_index:
         
         location = "5' UTR"
-    elif stop > loc_to_index_frame(int(cds_stop))[0]:
+    elif stop > p_stop_index:
         location = "3' UTR"
     else:
         
@@ -52,7 +64,7 @@ FEATURES             Location/Qualifiers
                      /ApEinfo_graphicformat=arrow_data {{0 1 2 0 0 -1} {} 0}
                      width 5 offset 0
      misc_feature    %i..%i
-                     /label=New Feature
+                     /label=Peptide
                      /ApEinfo_fwdcolor=#ff8000
                      /ApEinfo_revcolor=green
                      /ApEinfo_graphicformat=arrow_data {{0 1 2 0 0 -1} {} 0}

@@ -1,4 +1,5 @@
-import sys, os, subprocess, argparse
+import sys, os, subprocess, argparse, re
+from collections import OrderedDict
 import blast, ape_tools
 
 # keep track of file numbers
@@ -131,7 +132,7 @@ def process_sep(peptide,dna):
 def write_results_line(out_file,coord, peptide, annotation, location, start_type, sep_length, dna, sep_start):
 	if len(annotation.split(",")) > 1:
 		gene_id = annotation.split(',')[-1].strip()                                                
-		annotation_url_string = "=HYPERLINK(\"http://www.ncbi.nlm.nih.gov/nuccore/%s\";\"%s\")" % (gene_id, annotation)
+		annotation_url_string = "=HYPERLINK(\"http://www.ncbi.nlm.nih.gov/nuccore/%s\",\"%s\")" % (gene_id, annotation)
 		annotation = annotation_url_string
 	out_file.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (coord, peptide, annotation, location, start_type, sep_length, dna, sep_start))
 
@@ -163,7 +164,8 @@ if __name__ == '__main__':
 	else:
 		print "Out directory does not exist, Created!"
 		subprocess.call(['mkdir', out_path])
-	
+	# dictionary of results
+	out_dict = OrderedDict()
 	
 	# collect all the peptide info into a list
 	peptide_data = []
@@ -183,7 +185,7 @@ if __name__ == '__main__':
 	# tblastn the peptides and collect the data
 	if args.blast == 'yes':
 		out_file_text = open(out_path + "results_blast.csv", 'w')
-		req = blast.send_blast_request(queries)
+		req = blast.send_blast_request(queries)#,'tblastn','refseq_rna')
 		xml_data = blast.get_blast_results(req)
 		blast_dict = blast.parse_blast_results(xml_data)
 		# only iterate through data with blast
@@ -191,10 +193,21 @@ if __name__ == '__main__':
 	elif args.blast == 'no':
 		out_file_text = open(out_path + "results.csv", 'w')
 		blast_dict = {}
+	elif args.blast == 'both':
+		out_file_text = open(out_path + "results_blast.csv", 'w')
+		req = blast.send_blast_request(queries)#,'tblastn','refseq_rna')
+		xml_data = blast.get_blast_results(req)
+		blast_dict = blast.parse_blast_results(xml_data)
 	else:
 		out_file_text = open(out_path + "results_blast.csv", 'w')
 		blast_dict = blast.parse_blast_results(open(args.blast,'r').read())
 		peptide_data = filter( lambda pd: pd[2] in blast_dict.keys(), peptide_data )
+
+	for c,n,pep,d in peptide_data:
+		out_dict[pep] = {
+			'normal' : [],
+			'blast' : []
+		}
 	# write a little header
 	write_results_line(out_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript','Sep Start')
 	
@@ -209,50 +222,55 @@ if __name__ == '__main__':
 		# if the blast returned a hit
 		
 		location = ''
-		# two options - the peptide had a blast hit or it didnt
-		# we have slightly different processing/iterator patterns, so we have to control for this unfortunately 
-		if peptide in blast_dict.keys() :
-			# check if we have already processed the blast data for this peptide
-			if peptide not in blast_done:
-				print "Processing: %s\t Blast Matches: %s" % (peptide, len(blast_dict[peptide]))
-				blast_done.append(peptide)			
-				for hit in blast_dict[peptide]:
+		# two options - the peptide had a blast hit or it didnt and if weve done it already
+		if peptide in blast_dict.keys() and len(out_dict[peptide]['blast']) == 0:
+		
+			print "Processing: %s\t Blast Matches: %s" % (peptide, len(blast_dict[peptide]))
+			blast_done.append(peptide)			
+			for hit in blast_dict[peptide]:
 
-					seq = hit[3]
-					cds_range = hit[2].split("..")
-					cds_start = cds_range[0]
-					cds_stop = cds_range[1]
-					name = hit[0]
-					file_name = name[name.rfind("(")+1:name.rfind(")")]
-					annotation = file_name + ", " + hit[1].split("|")[3]
-					
-					# unfortunately we have to account for failed sep processing
-					# due to either lack of downstream stop codon, or failure to find protein (anti-sense blast hit)
-					# the blast_dna_or_message variable returns the dna back (for the map) or the failure message 
-					out_peptide,blast_dna_or_message,frame,peptide_start,peptide_end,start,stop,sep_length,start_type = process_sep(peptide, seq)
-					
-					if out_peptide:
-						# get the location in the coding sequence, or show no coding sequence (also set cds_start, cds_stop)
-						location,cds_start,cds_stop = ape_tools.calculate_location_in_protein(start, stop, cds_start, cds_stop)
-						# write the results file, with the RNAseq dna
-						write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
-						# write the ape file with the returned blast DNA
-						write_ape_file(out_path, file_name, blast_dna_or_message, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop)
-					else:
-						# if the search failed, write the results -- no need for ape map
-						write_results_line(out_file_text, coord, peptide, blast_dna_or_message + ", " + annotation, '', '', '', dna,'')
+				seq = hit[3]
+
+				cds_range = hit[2].split("..")
+				cds_start = cds_range[0]
+				cds_stop = cds_range[1]
+				name = hit[0]
+				file_name = name[name.rfind("(")+1:name.rfind(")")]
+				annotation = file_name + ", " + hit[1].split("|")[3]
+				
+				# unfortunately we have to account for failed sep processing
+				# due to either lack of downstream stop codon, or failure to find protein (anti-sense blast hit)
+				# the blast_dna_or_message variable returns the dna back (for the map) or the failure message 
+				out_peptide,blast_dna_or_message,frame,peptide_start,peptide_end,start,stop,sep_length,start_type = process_sep(peptide, seq)
+				
+				if out_peptide:
+					# get the location in the coding sequence, or show no coding sequence (also set cds_start, cds_stop)
+					location,cds_start,cds_stop = ape_tools.calculate_location_in_protein(start, stop, frame, cds_start, cds_stop)
+					# write the results file, with the RNAseq dna
+					out_dict[peptide]['blast'].append((out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame)))
+					#write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
+					# write the ape file with the returned blast DNA
+					write_ape_file(out_path, file_name, blast_dna_or_message, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop)
+				else:
+					# if the search failed, write the results -- no need for ape map
+					out_dict[peptide]['blast'].append((out_file_text, coord, peptide, blast_dna_or_message + ", " + annotation, '', '', '', dna,''))
+		print "Processing: %s\t" % (peptide)
+		# standard file and map creation without blast data
+		out_peptide,out_dna_or_message,frame,peptide_start,peptide_end,start,stop,sep_length,start_type = process_sep(peptide, dna)
+		# check if it found a valid sep (i.e. has a downstream stop codon)
+		if out_peptide:
+			out_dict[peptide]['normal'].append((out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame)))
+			#write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
+			write_ape_file(out_path, file_name, out_dna_or_message, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop)
 		else:
-			print "Processing: %s\t" % (peptide)
-			# standard file and map creation without blast data
-			out_peptide,out_dna_or_message,frame,peptide_start,peptide_end,start,stop,sep_length,start_type = process_sep(peptide, dna)
-			# check if it found a valid sep (i.e. has a downstream stop codon)
-			if out_peptide:
-				write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
-				write_ape_file(out_path, file_name, out_dna_or_message, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop)
-			else:
-				write_results_line(out_file_text, coord, peptide, out_dna_or_message, '', '', '', dna, '')
+			out_dict[peptide]['normal'].append((out_file_text, coord, peptide, out_dna_or_message, '', '', '', dna, ''))
 		
-		
+	for peptide,data in out_dict.items():
+		for line in data['normal']:
+			write_results_line(*line)
+		for line in data['blast']:
+			write_results_line(*line)
+
 
 	out_file_text.close()
 
