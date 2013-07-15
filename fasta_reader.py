@@ -71,7 +71,7 @@ class Data_Reader:
 		elif line.strip() == '' or line.startswith('>'):
 			return self.next_sequence()
 		else:
-			return line.strip().translate(None,self.delchars)
+			return filter(str.isalpha, line) #line.strip().translate(None,self.delchars)
 	def close(self):
 		self.pfile.close()
 
@@ -80,4 +80,4 @@ class Data_Reader:
 if __name__ == '__main__':
 	dd = Data_Reader('../database_test/nblast_in.txt')
 	for line in dd:
-		print line.strip()
+		print (line.strip())

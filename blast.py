@@ -1,9 +1,10 @@
 #!/usr/bin/python
-import argparse, StringIO
+import argparse, StringIO, subprocess, re, os, datetime
 import xml.etree.ElementTree as etree
 from urllib import urlopen, urlencode
 from time import sleep
-import re
+from list_to_fa import list_to_fa_string
+
 #set up the parsers
 #parser = argparse.ArgumentParser('Online Blast Search')
 #parser.add_argument("--fasta", "-f",dest="ref", type=str)
@@ -18,11 +19,31 @@ pep_file = open(args.pep, "r")
 out_file = open(args.out, "w")
 '''
 delchars = ''.join(c for c in map(chr, range(256)) if not c.isalpha())
+def execute_blast_program(queries, program, db):
+	# create temporary queries fasta file for blast exec to read
+	
+	dn = os.path.dirname(os.path.realpath(__file__))
+	seed = datetime.datetime.now().time().strftime("%H%M%S%f")
+	open('queriesforblast' + seed,'w').write(list_to_fa_string(queries))
+
+	cmd = ["%s/%s"%(dn,program),'-db', db, '-outfmt', '5', '-seg', 'no', '-remote', '-query', 'queriesforblast' + seed, '-out', 'blast_results'+seed+'.xml', '-entrez_query', 'Homo sapiens[Organism]', '-word_size', '2', '-matrix', 'PAM30', '-comp_based_stats', '0', '-max_target_seqs', '250']
+	
+	#print cmd
+	# gathers blast results into blast_results.xml
+	print "Blasting %i Queries" % len(queries)
+	subprocess.Popen(cmd).wait()
+	# delete temporary fasta
+	subprocess.Popen(['rm','queriesforblast' + seed])
+	return open('blast_results'+seed+'.xml','rU')
+
+
+
 def send_blast_request(queries):
 	word_size = 2
 	expect_value = 5000000
 	matrix_name = "PAM30"
 	database = "refseq_rna"
+	#database = 'nr'
 	#query_file = pep_file.read()
 
 	querystring = ""
@@ -37,8 +58,9 @@ def send_blast_request(queries):
 		'MATRIX' : matrix_name,
 		'HITLIST_SIZE' : 100,
 		'PROGRAM' : 'tblastn',
+		#'PROGRAM' : 'blastp',
 		'NCBI_GI' : 'on',
-		#'PAGE' : 'Proteins',
+		
 		'ENTREZ_QUERY' : 'Homo sapiens[Organism]',
 		'CMD' : 'Put'
 	}
@@ -52,7 +74,10 @@ def get_blast_results(put_request):
 		if line[:7] == "    RID":
 			rid = line.split("=")[1].strip()
 		elif line[:8] == "    RTOE":
-			rtoe = int(line.split("=")[1].strip())
+			try:
+				rtoe = int(line.split("=")[1].strip())
+			except:
+				rtoe = 100
 
 	get_request = urlopen(("http://www.ncbi.nlm.nih.gov/blast/Blast.cgi?" +
 	        "CMD=Get&RID=%s&FORMAT_OBJECT=Alignment"+
@@ -77,12 +102,27 @@ def get_blast_results(put_request):
 	        "&ALIGNMENT_VIEW=Pairwise") % (rid))
 	print "Blast results received"
 	return data
-def parse_blast_results(xml):
-	xml_file = open("blast_xml.txt", 'w')
-	xml_file.write(xml)
-	xml = StringIO.StringIO(xml)
+
+def try_int(n):
+	try:
+		return int(n)
+	except:
+		return 0
+def parse_blast_results(xml, ident_diff, fetch_gene_data):
+	#xml_file = open("blast_xml.txt", 'w')
+	#xml_file.write(xml)
+
+	# check if incoming xml is file or string.
+	'''
+	try:
+		xml = StringIO.StringIO(xml)
+	except:
+		print 'Fail'
+		pass
+	'''
 
 	tree = etree.parse(xml)
+	subprocess.Popen(['rm',os.path.realpath(xml.name)])
 	root = tree.getroot()
 	queries = root.find('BlastOutput_iterations')
 	query_dict = {}
@@ -92,7 +132,8 @@ def parse_blast_results(xml):
 	for query in queries:
 		# iterate through the peptides with any matches
 		peptide = query.find('Iteration_query-def').text
-		length = int(query.find('Iteration_query-len').text)
+
+		length = query.find('Iteration_query-len').text
 		hit_list = []
 		for hit in query.find('Iteration_hits'):
 			# get the data for each hit
@@ -100,35 +141,41 @@ def parse_blast_results(xml):
 			hit_val = int(hit_id.split("|")[1])
 			hit_name = hit.find('Hit_def').text.split('|')[0]
 			# filter out ONLY the perfect matches (indentities = peptide length)
-			hit_hsps = filter(lambda h: h.find('Hsp_identity').text == str(length), hit.find('Hit_hsps'))
-
+			
+			hit_hsps = filter(lambda h: try_int(length) - try_int(h.find('Hsp_identity').text) <= ident_diff and h.find('Hsp_gaps').text == '0', hit.find('Hit_hsps'))
+			
+			#print peptide, len(hit_hsps)
 			if len(hit_hsps) > 0:
 				#print "HIT: %s\t%s" % (peptide,hit_name)
 
 				# fetch the data for the gene from genbank
-				ncbi_url = "http://www.ncbi.nlm.nih.gov/sviewer/viewer.fcgi?val=%i&db=nuccore&dopt=genbank&retmode=text" % (hit_val)
-				record = urlopen(ncbi_url).read()
+				if fetch_gene_data:
+					ncbi_url = "http://www.ncbi.nlm.nih.gov/sviewer/viewer.fcgi?val=%i&db=nuccore&dopt=genbank&retmode=text" % (hit_val)
+					record = urlopen(ncbi_url).read()
 				# look only through the features
-				record = record.split("FEATURES")[1] 
-				record  = StringIO.StringIO(record)
-				cds_range = ''
-				seq = ''
+				try:
+					record = record.split("FEATURES")[1] 
+					record  = StringIO.StringIO(record)
+					cds_range = ''
+					seq = ''
 
-				# get the coding sequence location and mRNA sequence, return it with the names
-				for line in record:
-					cds_search = re.search("\WCDS\W(.*)",line)
-					if cds_search:
-						cds_range = cds_search.group(1).strip()
-					if 'ORIGIN' in line:
-						while not line.startswith("//"):
-							line = record.next()
-							seq += line.translate(None,delchars).upper()
-				# append name, coding range, and sequence to the hitlist for each query
-				# DO NOT APPEND IF NO CDS 
-				if cds_range.strip() != '':
-					hit_list.append((hit_name, hit_id, cds_range, seq))
-				else:
-					hit_list.append((hit_name, hit_id, 'non-coding..non-coding', seq))
+					# get the coding sequence location and mRNA sequence, return it with the names
+					for line in record:
+						cds_search = re.search("\WCDS\W(.*)",line)
+						if cds_search:
+							cds_range = cds_search.group(1).strip()
+						if 'ORIGIN' in line:
+							while not line.startswith("//"):
+								line = record.next()
+								seq += line.translate(None,delchars).upper()
+					# append name, coding range, and sequence to the hitlist for each query
+					# DO NOT APPEND IF NO CDS 
+					if cds_range.strip() != '':
+						hit_list.append((hit_name, hit_id, cds_range, seq))
+					else:
+						hit_list.append((hit_name, hit_id, 'non-coding..non-coding', seq))
+				except:
+					hit_list.append((hit_name,hit_id, '', 'could NOT RETRIEVE'))
 		if len(hit_list) > 0:
 			query_dict[peptide] = hit_list
 	return query_dict

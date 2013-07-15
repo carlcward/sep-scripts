@@ -1,7 +1,8 @@
 import sys, os, subprocess, argparse, re
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 import blast, ape_tools
-from copy import deepcopy,copy
+from math import ceil
+from copy import deepcopy
 # keep track of file numbers
 write_dict = {}
 # codon -> protein dict
@@ -36,7 +37,10 @@ def reverse_compliment(seq):
 
 # translate a single codon to a single amino acid
 def translate_codon(codon):
-	return trans_dict[codon.upper()].split("|")[0]
+	try:
+		return trans_dict[codon.upper()].split("|")[0]
+	except:
+		return "X"
 
 # translate list of codons into list of 1 letter amino acid codes
 def translate_codons(codons):
@@ -96,12 +100,78 @@ def find_upstream_start(index, frame, dna):
 			furthest_start = i
 	return (furthest_start, closest_stop)
 
+
+def get_aa_seq(frame, start, stop, dna):
+	fdna = dna[frame:]
+	seq = translate_codons_to_string(get_codons(fdna))
+	return seq[start:stop]
+
+
+# get a list of genomic coords for that are where the sep is actually transcribed from
+def get_sep_trans_coords(transcript_coord,transcript,sep_start,sep_end,exon_data):
+	out_string = ''
+	
+	regex = re.match("chr([0-9]{1,2}):([0-9]*)\-([0-9]*)",transcript_coord)
+	if regex != None:
+		regex = regex.groups()
+		chromosome = regex[0]
+		coord_start = int(regex[1])
+		coord_end = int(regex[2])
+		transcript_length = len(transcript)
+		print exon_data
+		exon_data = filter(lambda e: e.strip() != '', exon_data.split(";"))
+		exons = []
+		for exon in exon_data:
+			d = exon.split(",")
+			exons.append( [int(d[0]),int(d[1])] )
+
+		start_index = 0
+		stop_index = 0
+		pos = 1
+		#print exons
+		for i in range(len(exons)):
+			exon = exons[i]
+			rel_start = pos
+			rel_end = pos + (exon[1] - exon[0])
+			#print exons[i], rel_start, rel_end
+			if rel_start < sep_start and rel_end > sep_start:
+				start_index = i
+				exons[i][0] += sep_start - rel_start
+
+			if rel_start < sep_end and rel_end > sep_end:
+				stop_index = i
+				exons[i][1] = exons[i][0] + (sep_end - pos) - 1
+			pos = rel_end
+		#print start_index,stop_index
+		sep_trans_coords = exons[start_index:stop_index+1]
+		#print "TRANS",map(lambda c: (c[0] - coord_start,c[1] - coord_start, c[1]-c[0]) ,sep_trans_coords),sep_start,sep_end,sep_end-sep_start
+
+		for tc in sep_trans_coords:
+			out_string += "chr%s:%s-%s;" % (chromosome, tc[0] , tc[1] )
+		#if sep_trans_coords == []:
+		#	out_string += transcript_coord.split(' ')[0]
+	return out_string
+
+def check_kozak(start,stop,frame,dna):
+	variants = set(['ATG','CTG','GTG','TTG','AAG','ACG','AGG','ATA','ATC','ATT'])
+	fdna = dna[frame:]
+	codons = get_codons(fdna)[start:]
+	for i in range(stop-start):
+		cdn = codons[i]
+		if cdn in variants:
+			if codons[i-1][0] == 'A' or codons[i-1][0] == 'G':
+				if codons[i+1][0] == 'G':
+					return i+start, cdn
+	return None, ''
+
+
 # returns all necessary information for a given sep
 def process_sep(peptide,dna):
+	koz_i = None
 	# get the index and frame of the peptide
 	index, frame = find_protein_in_dna(peptide,dna)
 	if index == None:
-		return (None, 'Protein not found, check anti-sense',(),(),(),(),(),(),())
+		return (None, dna,(),(),(),(),(),(),'Protein not found, check anti-sense',(),(),(), ())
 	# find nearest downstream stop
 	stop = find_downstream_stop(index,frame,dna)
 	# find farthest upstream start, without a stop between
@@ -122,28 +192,85 @@ def process_sep(peptide,dna):
 	else:
 		start_type = 'AUG'
 	if stop == None:
-		return (None, 'No downstream stop',(),(),(),(),(),(),())
+		return (None, None,(),(),(),(),(),(),'No downstream stop',(),(),(), ())
 	else:
-		# return: peptide, dna, frame, protein start, protein stop, marked sep start, marked sep stop, length
-		return (peptide, dna, frame, index, index + len(peptide), start, stop, stop-p_start, start_type)
+		# return: peptide, dna, frame, protein start, protein stop, marked sep start, marked sep stop, length, kozak index, kozak codon, kozak length
+		if start_type == 'Non-AUG':
+			koz_i, koz_cdn = check_kozak(start, index, frame, dna)
+		aa_seq = get_aa_seq(frame, p_start, stop, dna)
+		if koz_i == None:
+			return (peptide, dna, frame, index, index + len(peptide), start, stop, stop-p_start, start_type, None, '', '', aa_seq)
+		else:
+			
+			return (peptide, dna, frame, index, index + len(peptide), start, stop, stop-p_start, start_type, koz_i, koz_cdn, stop - koz_i, aa_seq)
 
+# given sep data, and a list of sep data does the sep data "match" with all others in the list
+# That is - has the same gene, location, start type, and length
+def matching_sep(sep_data, sep_list):
+	if len(sep_list) == 0:
+		return 0
+	for i in range(len(sep_list)):
+		hit = sep_list[i]
+		if hit.start_type == sep_data.start_type and hit.location == sep_data.location and hit.length == sep_data.length and hit.annotation.split("#")[0] == sep_data.annotation.split("#")[0]:
+			return i
+	return None
+
+
+# create a dictionary of singly hit seps, put all questionably located ones into a another one
+def put_unique_dict(udict, sdict, p_data):
+	
+	if 'Not Annotated' in p_data.annotation and len(filter(lambda pd: '#' in pd.annotation and 'not found' not in pd.annotation,udict[p_data.peptide] + sdict[p_data.peptide])) > 0:
+		# Dont insert RNAseq data if there is already RefSeq Data there, (but do if it a special case (anti-sense etc))
+		# RefSeq Data will necesseraily have to come in first as blast results are processed before normal
+		pass
+	else:
+		# check if its in the suspect dict
+		if len(sdict[p_data.peptide]) > 0:
+			# and insert it into the correct location
+			match_loc = matching_sep(p_data, sdict[p_data.peptide])
+			if match_loc != None:
+				sdict[p_data.peptide].insert(match_loc+1,DataTuple._make(('','',p_data.annotation,'','','',p_data.dna,'','','', '')))
+			else:
+				sdict[p_data.peptide].append(p_data)
+		elif len(udict[p_data.peptide]) == 0:
+			udict[p_data.peptide].append(p_data)
+		else:
+			# do the same for the merged dict, but if there becomes a conflict, move it to the sdict and delete it from the udict
+			match_loc = matching_sep(p_data, udict[p_data.peptide])
+			if match_loc == None:
+				sdict[p_data.peptide] = udict[p_data.peptide] + [p_data]
+				#print sdict[p_data.peptide], 'SDICT'
+				udict[p_data.peptide] = []
+			else:
+				udict[p_data.peptide].insert(match_loc+1,DataTuple._make(('','',p_data.annotation,'','','',p_data.dna,'','','','')))
+	
+
+		
 
 # write a results styled line to the output
-def write_results_line(out_file_text,coord, peptide, annotation, location, start_type, sep_length, dna, sep_start):
+def write_results_line(out_file_text,coord, peptide, annotation, location, start_type, sep_length, dna, sep_start, koz_cdn, koz_l, aa_seq):
 	out_file = open(out_file_text, 'a')
-	if len(annotation.split(",")) > 1:
-		gene_id = annotation.split(',')[-1].strip()                                                
-		annotation_url_string = "=HYPERLINK(\"http://www.ncbi.nlm.nih.gov/nuccore/%s\";\"%s\")" % (gene_id, annotation)
+	if len(annotation.split("#")) > 1:
+		gene_id = annotation.split('#')[-1].strip()                                                
+		annotation_url_string = "=HYPERLINK(\"http://www.ncbi.nlm.nih.gov/nuccore/%s\"%s\"%s\")" % (gene_id,delim, ''.join(map(lambda c: ',' if c == '#' else c, annotation)))
 		annotation = annotation_url_string
-	out_file.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (coord, peptide, annotation, location, start_type, sep_length, dna, sep_start))
+	
+	out_file.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (coord, peptide, annotation, location, start_type, sep_length, koz_cdn,koz_l,aa_seq, dna, sep_start))
 	out_file.close()
-def write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop):
+def write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i):
 	num = write_dict.setdefault(file_name,0) + 1
 	if num == 1:
 		num = ''
+	
+	if koz_i == None:
+		koz_start, koz_end = 0,0
+	else:
+		koz_start = ape_tools.index_frame_to_loc(koz_i,frame)
+		koz_end = koz_start+2
 	write_dict[file_name] += 1
 	out_file = open(out_path + file_name + str(num) + ".ape","w")
-	out_file.write(ape_tools.create_ape_map(dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop))
+	
+	out_file.write(ape_tools.create_ape_map(dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_start, koz_end))
 	out_file.close()
 	
 
@@ -153,7 +280,8 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser('Online Blast Search')
 	parser.add_argument("sep_in", type=str)
 	parser.add_argument("out", type=str)
-	parser.add_argument("--blast", "-b", dest="blast", required=True, type=str)
+	parser.add_argument("--blast", "-b", dest="blast", required=True, type=str,help='options: yes, no, both - both will use both RNAseq data and online data from BLAST hits')
+	parser.add_argument('--officedelim','-o',dest='delim',action='store_true',help='use OpenOffice formula delimeters')
 	args = parser.parse_args()
 
 
@@ -166,30 +294,43 @@ if __name__ == '__main__':
 	else:
 		print "Out directory does not exist, Created!"
 		subprocess.call(['mkdir', out_path])
+	# the delimeter
+	delim = ','
+	if args.delim:
+		delim = ';'
 	# dictionary of results
 	out_dict = OrderedDict()
-	
+	unique_out_dict = OrderedDict()
+	suspect_out_dict = OrderedDict()
+	DataTuple = namedtuple('DataTuple',['coord','peptide','annotation','location','start_type','length','dna','sep_trans_coords','koz_cdn','koz_len','aa_seq'])
 	# collect all the peptide info into a list
 	peptide_data = []
 	for line in in_file:
-		peptide_data.append(tuple(line.strip().split("\t")))
+		tup = tuple(line[:-1].split("\t"))
+		if len(tup) == 4:
+			tup = tup + ('',)
+		print tup
+		peptide_data.append(tup)
+	# DATA: coords, PCNUM, peptide, transcript
+	peptide_data = filter(lambda p: p[2].strip() != '',peptide_data)
+	queries = list(set(d[2] for d in peptide_data))
 
-	# DATE: coords, PCNUM, peptide, transcript
-	peptide_data = filter(lambda p: p[0] != '',peptide_data)
+	# 
+	blast_dict = {}
 	
-	queries = set(d[2] for d in peptide_data)
-	'''
-	for d in peptide_data:
-		if d[2] not in queries:
-			queries.append(d[2])
-	print queries
-	'''
-	# tblastn the peptides and collect the data
+	unique_file_text = out_path + "results_merged.csv"
+	open(unique_file_text, 'w')
+	suspect_file_text = out_path + "results_multiple.csv"
+	open(suspect_file_text, 'w')
+
+	write_results_line(unique_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Start In Transcript', 'Kozak Codon', 'Possible Length','Protein Sequence')
+	write_results_line(suspect_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Start In Transcript', 'Kozak Codon', 'Possible Length','Protein Sequence')
+	
 	if args.blast == 'yes':
 		out_file_text = out_path + "results_blast.csv"
-		req = blast.send_blast_request(queries)#,'tblastn','refseq_rna')
-		xml_data = blast.get_blast_results(req)
-		blast_dict = blast.parse_blast_results(xml_data)
+		xfile = blast.execute_blast_program(queries,'tblastn','refseq_rna')
+		blast_dict = blast.parse_blast_results(xfile, 0, True)
+		
 		# only iterate through data with blast
 		peptide_data = filter( lambda pd: pd[2] in blast_dict.keys(), peptide_data )
 	elif args.blast == 'no':
@@ -197,79 +338,116 @@ if __name__ == '__main__':
 		blast_dict = {}
 	elif args.blast == 'both':
 		out_file_text = out_path + "results.csv"
-		req = blast.send_blast_request(queries)#,'tblastn','refseq_rna')
-		xml_data = blast.get_blast_results(req)
-		blast_dict = blast.parse_blast_results(xml_data)
+		xfile = blast.execute_blast_program(queries,'tblastn','refseq_rna')
+		blast_dict = blast.parse_blast_results(xfile, 0, True)
+	
 	else:
-		out_file_text = out_path + "results_blast.csv"
-		blast_dict = blast.parse_blast_results(open(args.blast,'r').read())
-		peptide_data = filter( lambda pd: pd[2] in blast_dict.keys(), peptide_data )
-	open(out_file_text, 'w')
-	for c,n,pep,d in peptide_data:
+		out_file_text = out_path + "results.csv"
+		blast_dict = blast.parse_blast_results(open(args.blast,'r'), 0, True)
+	
+	for c,n,pep,d,e in peptide_data:
 		out_dict[pep] = {
 			'normal' : [],
 			'blast' : []
 		}
-	# write a little header
-	write_results_line(out_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript','Sep Start In Transcript')
+		unique_out_dict[pep] = []
+		suspect_out_dict[pep] = []
 	
-	blast_done = []
+	# write a little header and clear file
+	open(out_file_text, 'w')
+	write_results_line(out_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Start In Transcript', 'Kozak Codon', 'Possible Length','Protein Sequence')
 
-	for coord,pcnum,peptide,dna in peptide_data:
+
+
+	for coord,pcnum,peptide,dna,exons in peptide_data:
 		# lines are tab delimited: coord, pc_number, peptide, sequence
 		cds_start, cds_stop = 0, 0
-		annotation = 'Not Annotated'
 		
-		file_name = peptide[:4]
+		
 		# if the blast returned a hit
 		
 		location = ''
 		# two options - the peptide had a blast hit or it didnt and if weve done it already
 		if peptide in blast_dict.keys() and len(out_dict[peptide]['blast']) == 0:
-		
+			
 			print "Processing: %s\t Blast Matches: %s" % (peptide, len(blast_dict[peptide]))
 			for hit in blast_dict[peptide]:
 
 				seq = hit[3]
 
 				cds_range = hit[2].split("..")
-				cds_start = cds_range[0]
-				cds_stop = cds_range[1]
+				if len(cds_range) != 2:
+					cds_start = 0
+					cds_stop = 0
+				else:
+					cds_start = cds_range[0]
+					cds_stop = cds_range[1]
 				name = hit[0]
 				file_name = name[name.rfind("(")+1:name.rfind(")")]
-				annotation_b = file_name + ", " + hit[1].split("|")[3]
+				annotation = file_name + "# " + hit[1].split("|")[3]
 				
 				# unfortunately we have to account for failed sep processing
 				# due to either lack of downstream stop codon, or failure to find protein (anti-sense blast hit)
-				# the blast_dna_or_message variable returns the dna back (for the map) or the failure message 
-				out_peptide_b,blast_dna_or_message,frame_b,peptide_start_b,peptide_end_b,start_b,stop_b,sep_length_b,start_type_b = process_sep(peptide, seq)
-				if out_peptide_b:
+				# the start_type_or_message variable returns the start_type back or the failure message 
+				out_peptide,blast_dna,frame,peptide_start,peptide_end,start,stop,sep_length,start_type_or_message, koz_i, koz_cdn, koz_l, aa_seq = process_sep(peptide, seq)
+				if out_peptide:
 					# get the location in the coding sequence, or show no coding sequence (also set cds_start, cds_stop)
-					location_b,cds_start,cds_stop = ape_tools.calculate_location_in_protein(start_b, stop_b, frame_b, cds_start, cds_stop)
+					location,cds_start,cds_stop = ape_tools.calculate_location_in_protein(start, stop, frame, cds_start, cds_stop)
 					# write the results file, with the RNAseq dna
-					out_dict[peptide]['blast'].append(deepcopy((out_file_text, coord, peptide, annotation_b, location_b, start_type_b, sep_length_b, dna, ape_tools.index_frame_to_loc(start_b,frame_b))))
-					#write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
+					out_dict[peptide]['blast'].append(deepcopy((out_file_text, coord, peptide, annotation, location, start_type_or_message, sep_length, blast_dna, '',koz_cdn,koz_l,aa_seq)))
+					dt = DataTuple._make((coord, peptide, annotation, location, start_type_or_message, sep_length, blast_dna, ape_tools.index_frame_to_loc(start,frame),koz_cdn,koz_l, aa_seq))
+					put_unique_dict(unique_out_dict, suspect_out_dict, dt)
+
 					# write the ape file with the returned blast DNA
-					write_ape_file(out_path, file_name, blast_dna_or_message, frame_b, peptide_start_b, peptide_end_b, start_b, stop_b, sep_length_b, cds_start, cds_stop)
+					
+					write_ape_file(out_path, file_name, blast_dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i)
 				else:
 					# if the search failed, write the results -- no need for ape map
-					out_dict[peptide]['blast'].append(deepcopy((out_file_text, coord, peptide, blast_dna_or_message + ", " + annotation_b, '', '', '', dna,'')))
+					dt = DataTuple._make((coord, peptide, start_type_or_message + ", " + annotation,'', '','', blast_dna,'','','',''))
+					# If it just a anti-sense, still put it in the dictionary, it has value
+					if blast_dna != None:
+						put_unique_dict(unique_out_dict,suspect_out_dict,dt)
+					out_dict[peptide]['blast'].append(deepcopy((out_file_text, coord, peptide, start_type_or_message + ", " + annotation, '', '', '', blast_dna,'', '', '', '')))
 		print "Processing: %s\t" % (peptide)
 		# standard file and map creation without blast data
-		out_peptide,out_dna_or_message,frame,peptide_start,peptide_end,start,stop,sep_length,start_type = process_sep(peptide, dna)
-		# check if it found a valid sep (i.e. has a downstream stop codon)
-		if out_peptide:
-			out_dict[peptide]['normal'].append(deepcopy((out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))))
-			#write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
-			write_ape_file(out_path, file_name, out_dna_or_message, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop)
-		else:
-			out_dict[peptide]['normal'].append(deepcopy((out_file_text, coord, peptide, out_dna_or_message + ", " + annotation, '', '', '', dna,'')))
+		if args.blast != 'yes':
+			out_peptide,out_dna,frame,peptide_start,peptide_end,start,stop,sep_length,start_type_or_message, koz_i, koz_cdn, koz_l, aa_seq = process_sep(peptide, dna)
+			annotation = 'Not Annotated'
+			file_name = peptide[:4]
+			cds_start = 0
+			cds_stop = 0
+
+			# check if it found a valid sep (i.e. has a downstream stop codon)
+			if out_peptide:
+				# use exons to get coordinates for the sep transcript
+				sep_trans_coords = get_sep_trans_coords(coord,dna,ape_tools.index_frame_to_loc(start,frame),ape_tools.index_frame_to_loc(stop,frame),exons)
 		
+				out_dict[peptide]['normal'].append(deepcopy((out_file_text, coord, peptide, annotation, location, start_type_or_message, sep_length, dna, sep_trans_coords, koz_cdn, koz_l, aa_seq)))
+				dt = DataTuple._make(( coord, peptide, annotation, location, start_type_or_message, sep_length, dna, sep_trans_coords, koz_cdn, koz_l, aa_seq))
+				put_unique_dict(unique_out_dict, suspect_out_dict, dt)
+				#write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
+				print file_name
+				write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i)
+			else:
+				dt = DataTuple._make((coord, peptide, annotation, start_type_or_message + ", " + annotation, '', '','','','','',''))
+				
+				if out_dna != None:
+					put_unique_dict(unique_out_dict,suspect_out_dict,dt)
+				out_dict[peptide]['normal'].append(deepcopy((out_file_text, coord, peptide, start_type_or_message + ", " + annotation, '', '', '', dna,'', '', '','')))
+	# create the file
 	for peptide,data in out_dict.items():
 		for line in data['normal']:
 			write_results_line(*line)
 		for line in data['blast']:
 			write_results_line(*line)
+	# create the merged file
+	for peptide,data in unique_out_dict.items():
+		for line in data:
+			write_results_line(unique_file_text,*line)
+
+	for peptide,data in suspect_out_dict.items():
+		for line in data:
+			write_results_line(suspect_file_text,*line)
 
 
 	

@@ -1,7 +1,12 @@
 #converts a line delimited list of sequences to a fasta with the sequence being the description
 import sys
 import argparse
-
+def list_to_fa_string(seqs):
+	out =''
+	for seq in seqs:
+		out += '>' + seq + '\n'
+		out += seq + '\n'
+	return out
 
 
 
@@ -12,10 +17,10 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 	in_file = open(args.in_file, "r")
 	out_file = open(args.out_file, "w")
-	delchars = ''.join(c for c in map(chr, range(256)) if not c.isalpha())
+	#delchars = ''.join(c for c in map(chr, range(256)) if not c.isalpha())
 	for line in in_file:
 		line = line.strip()
 		if line != '':
-			clean = line.translate(None, delchars)
+			clean = filter(str.isalpha,line)#line.translate(None, delchars)
 			out_file.write(">" + clean + "\n")
 			out_file.write(clean + "\n")

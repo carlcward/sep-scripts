@@ -22,9 +22,15 @@ def calculate_location_in_protein(start, stop, frame, cds_start, cds_stop):
 
     if frame == p_start_frame:
         if start < p_start_index:
-            location = '5\' Extension'
+            if stop > p_start_index:
+                location = '5\' Extension'
+            else:
+                location = '5\' UTR'
         elif stop > p_stop_index:
-            location = '3\' Extension'
+            if start < p_stop_index:
+                location = '3\' Extension'
+            else:
+                location = '3\' UTR'
         else:
             location = 'IN FRAME IN CDS'
     elif start < p_start_index:
@@ -38,7 +44,7 @@ def calculate_location_in_protein(start, stop, frame, cds_start, cds_stop):
     return location, cds_start, cds_stop
 
 # create the string to codes for the ape file
-def create_ape_map(dna, frame, p_st, p_sp, _start, _stop, p_length, cds_start, cds_stop):
+def create_ape_map(dna, frame, p_st, p_sp, _start, _stop, p_length, cds_start, cds_stop, koz_start, koz_end):
 	# ape file indexing is INCLUSIVE 
 	# so 1..3 highlights 1, 2, and 3 
     length = len(dna)
@@ -70,21 +76,25 @@ FEATURES             Location/Qualifiers
                      /ApEinfo_graphicformat=arrow_data {{0 1 2 0 0 -1} {} 0}
                      width 5 offset 0
      misc_feature    %i..%i
-                     /label=New Feature(1)
-                     /ApEinfo_label=New Feature
+                     /label=Start
                      /ApEinfo_fwdcolor=#ff0000
                      /ApEinfo_revcolor=green
                      /ApEinfo_graphicformat=arrow_data {{0 1 2 0 0 -1} {} 0}
                      width 5 offset 0
      misc_feature    %i..%i
-                     /label=New Feature(2)
-                     /ApEinfo_label=New Feature
+                     /label=Stop
                      /ApEinfo_fwdcolor=#ff0000
+                     /ApEinfo_revcolor=green
+                     /ApEinfo_graphicformat=arrow_data {{0 1 2 0 0 -1} {} 0}
+                     width 5 offset 0
+     misc_feature    %i..%i
+                     /label=Kozak Codon
+                     /ApEinfo_fwdcolor=#00c102
                      /ApEinfo_revcolor=green
                      /ApEinfo_graphicformat=arrow_data {{0 1 2 0 0 -1} {} 0}
                      width 5 offset 0
 ORIGIN
       %s 
 //
-''' % (length, p_length, cds_start, cds_stop, p_start, p_stop, start, start+2, stop, stop+2, dna)
+''' % (length, p_length, cds_start, cds_stop, p_start, p_stop, start, start+2, stop, stop+2, koz_start, koz_end, dna)
     return ape_string

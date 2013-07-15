@@ -22,7 +22,7 @@ Example:
 
 
 ----------------------
-find_RNA_transcripts.py    
+find_RNA_transcripts_from_indexed.py    
 ----------------------
 
 Take a list of peptides as input, along with the translated database, transcript database, and DTASelect.txt file (downloaded from ip2 website) and pairs up detected peptides with possible transcripts and coordindates.
@@ -34,17 +34,30 @@ Output:
 	peptides_with_data.txt
 
 Syntax:
-	python   find_RNA_transcripts.py   list_of_peptides.txt   translated_database.fasta   transcript_database.fasta   DTASelect 
+	python   find_RNA_transcripts.py   list_of_peptides.txt   translated_database.fasta   transcript_database.fasta   transcripts.gtf 
 
 Example:
-	python   find_RNA_transcripts.py   peptides.txt   ../databases/translate.faa   ../databases/transcripts.faa   DTASelect.txt
+	python   find_RNA_transcripts.py   peptides.txt   ../databases/translate.faa   ../databases/transcripts.faa   transcripts.gtf
 
 
 ----------------------
-120717_AGS_find_RNA_transcripts.py    
-----------------------	
+prelim_blast.py 
+----------------------
 
-Functions the same as find_RNA_transcripts.py, except it uses different a different coordinate database, as well as different searching for the PC Number
+Does the blastp against nr database. Any matching peptide or peptide with 1 amino-acid difference will be labeled 'found'.
+Takes < 15min for < 2000 peptides
+
+Input:
+	List of peptides
+
+Output:
+	Tab separated found/NOT FOUND peptide list
+
+Syntax:
+	python   prelim_blast.py   peptides   outfile
+
+Example
+	python   prelim_blast.py   blast_in.txt    blast_out.txt
 
 
 ----------------------
