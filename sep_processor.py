@@ -106,52 +106,76 @@ def get_aa_seq(frame, start, stop, dna):
 	seq = translate_codons_to_string(get_codons(fdna))
 	return seq[start:stop]
 
+# flip the coordinates around the middle of the transcript if the match is on the minus strand
+def pivot_coords(coords, transcript_start, transcript_end):
+	new_coords = []
+	length = transcript_end - transcript_start
+	for coord in coords:
+		new_coords.insert(0,[transcript_start + transcript_end - coord[1] + 1, transcript_start + transcript_end - coord[0]])
+	return new_coords
 
 # get a list of genomic coords for that are where the sep is actually transcribed from
 def get_sep_trans_coords(transcript_coord,transcript,sep_start,sep_end,exon_data):
 	out_string = ''
-	
-	regex = re.match("chr([0-9]{1,2}):([0-9]*)\-([0-9]*)",transcript_coord)
+	print sep_start, sep_end, len(transcript)
+	regex = re.search("chr([0-9XY]{1,2}):([0-9]*)\-([0-9]*) strand=(.)",transcript_coord)
+
 	if regex != None:
 		regex = regex.groups()
 		chromosome = regex[0]
-		coord_start = int(regex[1])
-		coord_end = int(regex[2])
+		transcript_start = int(regex[1])
+		transcript_end = int(regex[2])
+		strand = regex[3]
 		transcript_length = len(transcript)
-		print exon_data
 		exon_data = filter(lambda e: e.strip() != '', exon_data.split(";"))
 		exons = []
 		for exon in exon_data:
 			d = exon.split(",")
 			exons.append( [int(d[0]),int(d[1])] )
-
+		print exons
 		start_index = 0
 		stop_index = 0
 		pos = 1
-		#print exons
+		#print exons 
+
+		if strand == '-':
+			nc = pivot_coords([[sep_start,sep_end]], 1, transcript_length)
+			sep_start, sep_end = nc[0][0], nc[0][1]
+		print "new" + str((sep_start,sep_end))
+
 		for i in range(len(exons)):
 			exon = exons[i]
 			rel_start = pos
 			rel_end = pos + (exon[1] - exon[0])
 			#print exons[i], rel_start, rel_end
-			if rel_start < sep_start and rel_end > sep_start:
+			print exons[i][0], exons[i][1], rel_start, rel_end
+			if rel_start <= sep_start and rel_end >= sep_start:
 				start_index = i
 				exons[i][0] += sep_start - rel_start
 
-			if rel_start < sep_end and rel_end > sep_end:
+			if rel_start <= sep_end and rel_end >= sep_end:
 				stop_index = i
-				exons[i][1] = exons[i][0] + (sep_end - pos) - 1
-			pos = rel_end
+				exons[i][1] = exons[i][1] - (rel_end - sep_end)#exons[i][0] + (sep_end - pos) - 1
+			
+			pos = rel_end+1
 		#print start_index,stop_index
+		print start_index, stop_index
 		sep_trans_coords = exons[start_index:stop_index+1]
+		if strand == '-':
+			print 'minus strand'
+		#	sep_trans_coords = pivot_coords(sep_trans_coords, transcript_start, transcript_end)
 		#print "TRANS",map(lambda c: (c[0] - coord_start,c[1] - coord_start, c[1]-c[0]) ,sep_trans_coords),sep_start,sep_end,sep_end-sep_start
-
+		print sep_trans_coords
+		total = 0
 		for tc in sep_trans_coords:
+			total += (tc[1]- tc[0])
 			out_string += "chr%s:%s-%s;" % (chromosome, tc[0] , tc[1] )
+		print total, total/3
 		#if sep_trans_coords == []:
 		#	out_string += transcript_coord.split(' ')[0]
 	return out_string
 
+# chekck see if there is a Kozak consensus start sequence in frame of the sep start, and before the stop
 def check_kozak(start,stop,frame,dna):
 	variants = set(['ATG','CTG','GTG','TTG','AAG','ACG','AGG','ATA','ATC','ATT'])
 	fdna = dna[frame:]
@@ -163,7 +187,6 @@ def check_kozak(start,stop,frame,dna):
 				if codons[i+1][0] == 'G':
 					return i+start, cdn
 	return None, ''
-
 
 # returns all necessary information for a given sep
 def process_sep(peptide,dna):
@@ -244,9 +267,6 @@ def put_unique_dict(udict, sdict, p_data):
 			else:
 				udict[p_data.peptide].insert(match_loc+1,DataTuple._make(('','',p_data.annotation,'','','',p_data.dna,'','','','')))
 	
-
-		
-
 # write a results styled line to the output
 def write_results_line(out_file_text,coord, peptide, annotation, location, start_type, sep_length, dna, sep_start, koz_cdn, koz_l, aa_seq):
 	out_file = open(out_file_text, 'a')
@@ -257,7 +277,7 @@ def write_results_line(out_file_text,coord, peptide, annotation, location, start
 	
 	out_file.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (coord, peptide, annotation, location, start_type, sep_length, koz_cdn,koz_l,aa_seq, dna, sep_start))
 	out_file.close()
-def write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i):
+def write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i, annotation):
 	num = write_dict.setdefault(file_name,0) + 1
 	if num == 1:
 		num = ''
@@ -270,7 +290,7 @@ def write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, 
 	write_dict[file_name] += 1
 	out_file = open(out_path + file_name + str(num) + ".ape","w")
 	
-	out_file.write(ape_tools.create_ape_map(dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_start, koz_end))
+	out_file.write(ape_tools.create_simple_ape_map(dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_start, koz_end, annotation))
 	out_file.close()
 	
 
@@ -309,7 +329,6 @@ if __name__ == '__main__':
 		tup = tuple(line[:-1].split("\t"))
 		if len(tup) == 4:
 			tup = tup + ('',)
-		print tup
 		peptide_data.append(tup)
 	# DATA: coords, PCNUM, peptide, transcript
 	peptide_data = filter(lambda p: p[2].strip() != '',peptide_data)
@@ -323,8 +342,8 @@ if __name__ == '__main__':
 	suspect_file_text = out_path + "results_multiple.csv"
 	open(suspect_file_text, 'w')
 
-	write_results_line(unique_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Start In Transcript', 'Kozak Codon', 'Possible Length','Protein Sequence')
-	write_results_line(suspect_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Start In Transcript', 'Kozak Codon', 'Possible Length','Protein Sequence')
+	write_results_line(unique_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Transcript Coords', 'Kozak Codon', 'Possible Length','Protein Sequence')
+	write_results_line(suspect_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Transcript Coords', 'Kozak Codon', 'Possible Length','Protein Sequence')
 	
 	if args.blast == 'yes':
 		out_file_text = out_path + "results_blast.csv"
@@ -355,7 +374,7 @@ if __name__ == '__main__':
 	
 	# write a little header and clear file
 	open(out_file_text, 'w')
-	write_results_line(out_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Start In Transcript', 'Kozak Codon', 'Possible Length','Protein Sequence')
+	write_results_line(out_file_text,'Coordinates','Peptide','Annotation','Location','Start Type','Length','RNASeq Transcript / RefSeq Trascript from BLAST','Sep Transcript Coords', 'Kozak Codon', 'Possible Length','Protein Sequence')
 
 
 
@@ -366,7 +385,7 @@ if __name__ == '__main__':
 		
 		# if the blast returned a hit
 		
-		location = ''
+		
 		# two options - the peptide had a blast hit or it didnt and if weve done it already
 		if peptide in blast_dict.keys() and len(out_dict[peptide]['blast']) == 0:
 			
@@ -395,12 +414,12 @@ if __name__ == '__main__':
 					location,cds_start,cds_stop = ape_tools.calculate_location_in_protein(start, stop, frame, cds_start, cds_stop)
 					# write the results file, with the RNAseq dna
 					out_dict[peptide]['blast'].append(deepcopy((out_file_text, coord, peptide, annotation, location, start_type_or_message, sep_length, blast_dna, '',koz_cdn,koz_l,aa_seq)))
-					dt = DataTuple._make((coord, peptide, annotation, location, start_type_or_message, sep_length, blast_dna, ape_tools.index_frame_to_loc(start,frame),koz_cdn,koz_l, aa_seq))
+					dt = DataTuple._make((coord, peptide, annotation, location, start_type_or_message, sep_length, blast_dna, '',koz_cdn,koz_l, aa_seq))
 					put_unique_dict(unique_out_dict, suspect_out_dict, dt)
 
 					# write the ape file with the returned blast DNA
 					
-					write_ape_file(out_path, file_name, blast_dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i)
+					write_ape_file(out_path, file_name, blast_dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i, annotation)
 				else:
 					# if the search failed, write the results -- no need for ape map
 					dt = DataTuple._make((coord, peptide, start_type_or_message + ", " + annotation,'', '','', blast_dna,'','','',''))
@@ -413,6 +432,7 @@ if __name__ == '__main__':
 		if args.blast != 'yes':
 			out_peptide,out_dna,frame,peptide_start,peptide_end,start,stop,sep_length,start_type_or_message, koz_i, koz_cdn, koz_l, aa_seq = process_sep(peptide, dna)
 			annotation = 'Not Annotated'
+			location = ''
 			file_name = peptide[:4]
 			cds_start = 0
 			cds_stop = 0
@@ -426,8 +446,7 @@ if __name__ == '__main__':
 				dt = DataTuple._make(( coord, peptide, annotation, location, start_type_or_message, sep_length, dna, sep_trans_coords, koz_cdn, koz_l, aa_seq))
 				put_unique_dict(unique_out_dict, suspect_out_dict, dt)
 				#write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
-				print file_name
-				write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i)
+				write_ape_file(out_path, file_name, dna, frame, peptide_start, peptide_end, start, stop, sep_length, cds_start, cds_stop, koz_i, '')
 			else:
 				dt = DataTuple._make((coord, peptide, annotation, start_type_or_message + ", " + annotation, '', '','','','','',''))
 				
