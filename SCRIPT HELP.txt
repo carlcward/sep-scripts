@@ -8,24 +8,25 @@ Input:
 	peptides_with_data.txt, output directory (will create it/clear previous APE maps)
 
 Output:
-	results.txt             (-b no)
-	results_blast.txt       (-b yes)
+	results_merged.txt			Results that have a single good SEP
+	results_multiple.txt		Results that have multiple good SEP canidates
+	results.txt					All the results
 	named APE files corresponding to peptide/annotation
 
 Syntax:
-	python   sep_processor.py    peptide_and_transcript.txt   result_directors -b yes/no
+	python   sep_processor.py    peptide_and_transcript.txt   result_directory -b yes/no/both
 
-'-b' flag controls whether the peptides will be Blasted and matched up with known annotated sequences. Only annotated results will be reported
+'-b' flag controls whether the peptides will be Blasted and matched up with known annotated sequences.
 
 Example:
-	python   sep_processor.py    pep_and_trans.txt   ./RNAMaps
+	python   sep_processor.py    pep_and_trans.txt   ./RNAMaps   -b   both
 
 
 ----------------------
 find_RNA_transcripts_from_indexed.py    
 ----------------------
 
-Take a list of peptides as input, along with the translated database, transcript database, and DTASelect.txt file (downloaded from ip2 website) and pairs up detected peptides with possible transcripts and coordindates.
+Take a list of peptides as input, along with the translated database, transcript database, and transcript gtf file (or DTASelect.txt downloaded from ip2 website) and pairs up detected peptides with possible transcripts and coordindates. Also extracts exon coordinates for the matched transcripts.
 
 Input:
 	List of peptides

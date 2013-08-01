@@ -12,6 +12,7 @@ SITE_URL = "http://ip2-saglab.fas.harvard.edu"
 pep_file = Data_Reader(sys.argv[1])
 
 # get the url of the 'spreadsheet' from copy paste -> stdin
+print "Copy and pasta the URL of the protein page from your web browser:"
 data_file = sys.stdin.readline().strip()
 data_file += "&display=peptide"
 
