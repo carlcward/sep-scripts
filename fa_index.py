@@ -140,7 +140,7 @@ def create_tag_index(transcripts_fasta, tag_regex):
 		if char == '>':
 			loc = fasta.tell() - 1 
 			test = read_until_EOL(fasta)
-			match = tag_regex.match(test)
+			match = tag_regex.search(test)
 			if match != None:
 				tag = match.groups()[0]
 				tag_dict[tag] = loc
