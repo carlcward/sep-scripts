@@ -1,5 +1,9 @@
 import sys, os, subprocess, argparse, re
-from collections import OrderedDict, namedtuple
+try:
+	from collections import OrderedDict, namedtuple
+except:
+	print "Python 2.6 is required!"
+	sys.exit(0)
 import blast, ape_tools
 from math import ceil
 from copy import deepcopy
@@ -413,7 +417,7 @@ if __name__ == '__main__':
 					# get the location in the coding sequence, or show no coding sequence (also set cds_start, cds_stop)
 					location,cds_start,cds_stop = ape_tools.calculate_location_in_protein(start, stop, frame, cds_start, cds_stop)
 					# write the results file, with the RNAseq dna
-					out_dict[peptide]['blast'].append(deepcopy((out_file_text, coord, peptide, annotation, location, start_type_or_message, sep_length, blast_dna, '',koz_cdn,koz_l,aa_seq)))
+					out_dict[peptide]['blast'].append((out_file_text, coord, peptide, annotation, location, start_type_or_message, sep_length, blast_dna, '',koz_cdn,koz_l,aa_seq))
 					dt = DataTuple._make((coord, peptide, annotation, location, start_type_or_message, sep_length, blast_dna, '',koz_cdn,koz_l, aa_seq))
 					put_unique_dict(unique_out_dict, suspect_out_dict, dt)
 
@@ -426,7 +430,7 @@ if __name__ == '__main__':
 					# If it just a anti-sense, still put it in the dictionary, it has value
 					if blast_dna != None:
 						put_unique_dict(unique_out_dict,suspect_out_dict,dt)
-					out_dict[peptide]['blast'].append(deepcopy((out_file_text, coord, peptide, start_type_or_message + ", " + annotation, '', '', '', blast_dna,'', '', '', '')))
+					out_dict[peptide]['blast'].append((out_file_text, coord, peptide, start_type_or_message + ", " + annotation, '', '', '', blast_dna,'', '', '', ''))
 		print "Processing: %s\t" % (peptide)
 		# standard file and map creation without blast data
 		if args.blast != 'yes':
@@ -442,7 +446,7 @@ if __name__ == '__main__':
 				# use exons to get coordinates for the sep transcript
 				sep_trans_coords = get_sep_trans_coords(coord,dna,ape_tools.index_frame_to_loc(start,frame),ape_tools.index_frame_to_loc(stop,frame),exons)
 		
-				out_dict[peptide]['normal'].append(deepcopy((out_file_text, coord, peptide, annotation, location, start_type_or_message, sep_length, dna, sep_trans_coords, koz_cdn, koz_l, aa_seq)))
+				out_dict[peptide]['normal'].append((out_file_text, coord, peptide, annotation, location, start_type_or_message, sep_length, dna, sep_trans_coords, koz_cdn, koz_l, aa_seq))
 				dt = DataTuple._make(( coord, peptide, annotation, location, start_type_or_message, sep_length, dna, sep_trans_coords, koz_cdn, koz_l, aa_seq))
 				put_unique_dict(unique_out_dict, suspect_out_dict, dt)
 				#write_results_line(out_file_text, coord, peptide, annotation, location, start_type, sep_length, dna, ape_tools.index_frame_to_loc(start,frame))
