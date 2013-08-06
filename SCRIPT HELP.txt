@@ -14,12 +14,12 @@ Output:
 	named APE files corresponding to peptide/annotation
 
 Syntax:
-	python   sep_processor.py    peptide_and_transcript.txt   result_directory -b yes/no/both
+	python   sep_processor.py    peptides_with_data.txt   result_directory -b yes/no/both
 
 '-b' flag controls whether the peptides will be Blasted and matched up with known annotated sequences.
 
 Example:
-	python   sep_processor.py    pep_and_trans.txt   ./RNAMaps   -b   both
+	python   sep_processor.py    peptides_with_data.txt   ./RNAMaps   -b   both
 
 
 ----------------------
@@ -83,7 +83,7 @@ Syntax:
 
 Example:
 	python   spectra_grab.py   peptides.txt   ./sprectra_out/
-	
+
 	Copy and pasta the URL of the protein page from your web browser:
 	http://ip2-saglab.fas.harvard.edu/ip2/searchResult.html?pid=5&experimentId=2&projectName=K562_SEP+profiling&searchId=18&sampleName=K562_Gel1D&createdDate=2013-02-20+14%3a33%3a48.0&searchName=
 
