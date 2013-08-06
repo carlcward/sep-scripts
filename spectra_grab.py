@@ -1,7 +1,6 @@
 import sys, subprocess, os
 import twill.commands as tc
 import Image
-import pyPdf
 from fasta_reader import Data_Reader
 #from screenshot import Screenshot
 
@@ -114,10 +113,6 @@ for f in filenames:
 	final_img.save(out_file,'PNG')
 	out_file.close()
 
-# create the PDFs
-
-#out_pdf = open(outpath + "spectra.pdf", "w")
-#for f in filenames:
 
 
 print "Input File had %i Peptides" % num_starting_peps
