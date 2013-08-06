@@ -56,6 +56,8 @@ Output:
 
 Syntax:
 	python   prelim_blast.py   peptides   outfile
+Copy and pasta the URL of the protein page from your web browser:
+
 
 Example
 	python   prelim_blast.py   blast_in.txt    blast_out.txt
@@ -81,7 +83,8 @@ Syntax:
 
 Example:
 	python   spectra_grab.py   peptides.txt   ./sprectra_out/
-
+	
+	Copy and pasta the URL of the protein page from your web browser:
 	http://ip2-saglab.fas.harvard.edu/ip2/searchResult.html?pid=5&experimentId=2&projectName=K562_SEP+profiling&searchId=18&sampleName=K562_Gel1D&createdDate=2013-02-20+14%3a33%3a48.0&searchName=
 
 
