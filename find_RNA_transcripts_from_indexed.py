@@ -8,32 +8,30 @@ plist=[]
 # get the right regex for seraching through the transcript file and creating the tag index
 def get_matching_transcript_file_regex(test):
     possible_tag_regexs = ( x for x in [
-    "([a-z0-9]*\.[0-9])",
+    "(uc[0-9a-z]*\.[0-9])",
     "\|((?:AC|AP|NC|NG|NM|NP|NR|NT|NW|NZ|XM|XP|XR|YP|ZP)_.*?)\|",
-    "TCONS_([0-9]*)"]
-    )
+    "TCONS_([0-9]*)"])
     
     regex = None
     try:
         while not regex:
             regex = re.search(possible_tag_regexs.next(), test)
         matching_regex = regex.re.pattern
-        
+        print matching_regex
         return matching_regex
     except:
         print "None!"
         return None
 
 # return the PC number from the given info line from the translated fasta file
-# automatically detectcs the database tag format
+# automatically detects the database tag format
 def PCnumber(match):
+    # generator of possible regexes
     possible_tag_regexs = ( x for x in [
-    "^>([a-z0-9]*\.[0-9])",
+    "^>(uc[0-9a-z]*\.[0-9])",
     "^>((?:AC|AP|NC|NG|NM|NP|NR|NT|NW|NZ|XM|XP|XR|YP|ZP)_[0-9]*\.[0-9])[a-z]",
-    "^>PC_([0-9]*)_"]
-    )
+    "^>PC_([0-9]*)_"])
     regex = None
-    print match
     try:
         while not regex:
             regex = re.search(possible_tag_regexs.next(), match)
