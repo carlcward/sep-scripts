@@ -272,7 +272,7 @@ def write_results_line(out_file_text,coord, peptide, annotation, location, start
 	out_file = open(out_file_text, 'a')
 	if len(annotation.split("#")) > 1:
 		gene_id = annotation.split('#')[-1].strip()                                                
-		annotation_url_string = "=HYPERLINK(\"http://www.ncbi.nlm.nih.gov/nuccore/%s\"%s\"%s\")" % (gene_id,delim, ''.join(map(lambda c: ',' if c == '#' else c, annotation)))
+		annotation_url_string = "=HYPERLINK(\"http://www.ncbi.nlm.nih.gov/nuccore/%s\"%s\"%s\")" % (gene_id,delim, ''.join(annotation.replace("#",",")))
 		annotation = annotation_url_string
 	
 	out_file.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % (coord, peptide, annotation, location, start_type, sep_length, koz_cdn,koz_l,aa_seq, dna, sep_start))
