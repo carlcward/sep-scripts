@@ -117,7 +117,7 @@ def pivot_coords(coords, transcript_start, transcript_end):
 # get a list of genomic coords for that are where the sep is actually transcribed from
 def get_sep_trans_coords(transcript_coord,transcript,sep_start,sep_end,exon_data):
 	out_string = ''
-	print sep_start, sep_end, len(transcript)
+	#print sep_start, sep_end, len(transcript)
 	regex = re.search("chr([0-9XY]{1,2}):([0-9]*)\-([0-9]*) strand=(.)",transcript_coord)
 
 	if regex != None:
